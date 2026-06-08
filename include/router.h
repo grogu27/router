@@ -51,6 +51,7 @@ int resolve_mac(const char *interface_name, uint32_t ip, unsigned char *mac);
 int get_interface_index(const char *ifname);
 int get_interface_mac(const char *ifname, unsigned char *mac);
 uint32_t ip_to_uint32(const char *ip_str);
+void uint32_to_ip(uint32_t ip, char *buf, size_t buf_size);
 void* cli_thread_func(void *arg);
 
 
