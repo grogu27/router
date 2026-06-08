@@ -216,16 +216,19 @@ route_entry_t* find_route(uint32_t dest_ip) {
     
     route_entry_t *best = NULL;
     uint32_t best_mask = 0;
-    
+    int best_priority = 999;
     for (int i = 0; i < route_count; i++) {
         if ((dest_ip & route_table[i].mask) == (route_table[i].network & route_table[i].mask)) {
             if (route_table[i].mask > best_mask) {
                 best_mask = route_table[i].mask;
                 best = &route_table[i];
             }
+            else if (route_table[i].mask == best_mask && route_table[i].priority < best_priority) {
+                best_priority = route_table[i].priority;
+                best = &route_table[i];
+            }
         }
-    }
-    
+    }   
     pthread_mutex_unlock(&route_mutex);
     return best;
 }
