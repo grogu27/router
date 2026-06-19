@@ -14,7 +14,7 @@
 #include "arp.h"
 #include "checksum.h"
 #include "logger.h"
-
+#include "icmp.h"
 #define ROUTES_DIR "./routes"
 
 int raw_sock;
@@ -116,107 +116,10 @@ int is_virtualbox_ip(uint32_t ip) {
     return 0;
 }
 
-// // Обработка одного пакета
-// void process_packet(unsigned char *buf, int len) {
-//     struct ethhdr *eth = (struct ethhdr*)buf;
-    
-//     // Только IPv4
-//     if (ntohs(eth->h_proto) != ETH_P_IP) return;
-    
-//     struct iphdr *ip = (struct iphdr*)(buf + sizeof(struct ethhdr));
-//     uint32_t dest_ip = ip->daddr;
-//     uint32_t src_ip = ip->saddr;
-    
-//     // ========== ФИЛЬТРЫ ==========
-    
-//     // 1. Игнорируем петлевой интерфейс (127.0.0.1)
-//     if (dest_ip == 0x0100007F) return;
-    
-//     // 2. Игнорируем свои IP-адреса (назначение)
-//     if (is_my_ip(dest_ip)) return;
-    
-//     // 3. Игнорируем свои IP-адреса (источник) — чтобы не видеть свой же исходящий трафик
-//     if (is_my_ip(src_ip)) return;
-    
-//     // 4. Игнорируем шлюзы (IP, заканчивающиеся на .1)
-//     if (is_gateway_ip(dest_ip)) return;
-    
-//     // Игнорируем мультикаст (224.0.0.0 - 239.255.255.255)
-//     if ((dest_ip & 0xF0000000) == 0xE0000000) return;
-
-//     // Игнорируем широковещательные адреса (.255)
-//     if ((dest_ip & 0xFF) == 0xFF) return;
-
-//     // Игнорируем локальный широковещательный адрес (255.255.255.255)
-//     if (dest_ip == 0xFFFFFFFF) return;
-    
-//     // ========== ЛОГИРУЕМ ТОЛЬКО ИНТЕРЕСНЫЕ ПАКЕТЫ ==========
-    
-//     log_message("Received packet: dst_ip = %u.%u.%u.%u",
-//                 (dest_ip >> 0) & 0xFF, (dest_ip >> 8) & 0xFF,
-//                 (dest_ip >> 16) & 0xFF, (dest_ip >> 24) & 0xFF);
-    
-//     // Проверяем контрольную сумму IP
-//     if (!verify_ip_checksum(ip, ip->ihl * 4)) {
-//         log_message("ERROR: IP checksum invalid");
-//         return;
-//     }
-    
-//     // Поиск маршрута
-//     route_entry_t *route = find_route(dest_ip);
-    
-//     if (route == NULL) {
-//         log_message("No route for destination");
-//         return;
-//     }
-    
-//     // Уменьшаем TTL
-//     if (ip->ttl <= 1) {
-//         log_message("TTL expired");
-//         return;
-//     }
-//     ip->ttl--;
-    
-//     // Пересчитываем контрольную сумму
-//     ip->check = 0;
-//     ip->check = ip_checksum(ip, ip->ihl * 4);
-    
-//     // Определяем IP для ARP
-//     uint32_t target_ip_for_arp;
-//     if (route->nexthop == 0) {
-//         target_ip_for_arp = dest_ip;
-//     } else {
-//         target_ip_for_arp = route->nexthop;
-//     }
-    
-//     // Получаем MAC
-//     unsigned char next_mac[6];
-//     if (resolve_mac(route->interface, target_ip_for_arp, next_mac) != 0) {
-//         log_message("Cannot resolve MAC for %u.%u.%u.%u, dropping packet",
-//                     (target_ip_for_arp >> 0) & 0xFF,
-//                     (target_ip_for_arp >> 8) & 0xFF,
-//                     (target_ip_for_arp >> 16) & 0xFF,
-//                     (target_ip_for_arp >> 24) & 0xFF);
-//         return;
-//     }
-    
-//     // Обновляем Ethernet-заголовок
-//     unsigned char src_mac[6];
-//     if (get_interface_mac(route->interface, src_mac) == 0) {
-//         memcpy(eth->h_source, src_mac, 6);
-//     }
-//     memcpy(eth->h_dest, next_mac, 6);
-    
-//     // Отправляем
-//     send_packet(buf, len, route->interface, next_mac);
-    
-//     log_message("Packet forwarded via %s", route->interface);
-// }
-
 // Обработка одного пакета
 void process_packet(unsigned char *buf, int len) {
     struct ethhdr *eth = (struct ethhdr*)buf;
-    
+
     // Только IPv4
     if (ntohs(eth->h_proto) != ETH_P_IP) return;
     
@@ -281,14 +184,16 @@ void process_packet(unsigned char *buf, int len) {
     if (route == NULL) {
         log_message("No route for destination");
         return;
+	
     }
     
     // Уменьшаем TTL
     if (ip->ttl <= 1) {
         log_message("TTL expired");
+	    icmp_time_exc(eth, ip);
         return;
     }
-    ip->ttl--;
+	    ip->ttl--;
     
     // Пересчитываем контрольную сумму
     ip->check = 0;
